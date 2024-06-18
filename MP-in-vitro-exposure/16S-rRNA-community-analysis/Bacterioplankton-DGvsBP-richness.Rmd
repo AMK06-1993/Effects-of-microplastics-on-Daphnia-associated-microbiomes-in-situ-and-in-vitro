@@ -1,0 +1,34 @@
+---
+  title: "Bacterioplankton: DG vs BP richness"
+output: html_notebook
+---
+```{r}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(ggpubr)
+library(data.table)
+library(BiocManager)
+library(microbiome)
+library(knitr)
+#install.packages("patchwork")
+library(patchwork)
+```
+
+```{r}
+ps_bac= readRDS("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/phyloseq/decontam/ps_rare_bacteroplankton_decontam.rds")
+meta= data.frame(sample_data(ps_bac))
+subset_phyloseq <- subset_samples(ps_bac, Name.storage.Box=="plastic bag: Bacterioplankton De Gavers & Blauwe poort - Nikola -8/11/2021")
+meta= data.frame(sample_data(subset_phyloseq))
+```
+
+```{r}
+tab <-microbiome::alpha(subset_phyloseq, index = "all")
+tab$Pond = meta$Pond
+
+#Shannon
+print(t.test(diversity_shannon~Pond, data=tab)) # p-value = 0.4564
+#Chao1
+print(t.test(chao1~Pond, data=tab)) # p-value = 0.277
+```
+

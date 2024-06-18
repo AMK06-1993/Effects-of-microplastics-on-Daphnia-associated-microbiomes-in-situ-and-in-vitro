@@ -1,0 +1,364 @@
+---
+title: "PlasticDaphnia: Nicola's exposure PCoA ordinations: Daphnia's microbiome"
+output: html_notebook
+---
+```{r}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(ggpubr)
+library(data.table)
+library(BiocManager)
+library(microbiome)
+library(knitr)
+#install.packages("patchwork")
+library(patchwork)
+```
+
+Load ps-object and metadata
+```{r}
+#Load phyloseq (rarefied)
+ps_mic = readRDS("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/phyloseq/decontam/ps_rare_daphnia_decontam.rds")
+
+#load meta
+meta = read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/decontaminated_set/merged_meta.csv",row.names = 1)
+```
+
+Load metadata into ps
+```{r}
+# Extract common sample IDs
+common_sample_ids <- intersect(sample_names(ps_mic), row.names(meta))
+# Subset metadata to include only common sample IDs
+filtered_meta <- meta[common_sample_ids, ]
+# Assign filtered metadata as sample_data for ps_bac
+sample_data(ps_mic) <- filtered_meta
+ps_mic <- subset_samples(ps_mic, Exposure_time !="Pre-Env") #remove 2 extra env-samples
+```
+
+
+Is microbial composition different (both ponds) between MPs exposed and exposure control? Daphnia in general
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Exposure_time =="Post" &  Plastic != "C" & Age == "Adult" | Exposure_time =="Post" & Plastic == "C" & Age == "Adult")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Plastic_presence, data = filtered_meta, na.action = na.omit) #0.39
+permanova_result
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Plastic_presence,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.163
+```
+Are pre-exposure controls the same as exposure controls (jars without plastic added)?
+	PERMANOVA between Exposure control and pre-exposure control
+If significant, we leave it, if not -> Merge then into "CONTROL"
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Exposure_time =="Pre" | Exposure_time =="Post" & Plastic == "C" & Age == "Adult")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Exposure_time, data = filtered_meta, na.action = na.omit) #0.004 **
+
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Exposure_time,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.179
+
+```
+Which community is richer?
+
+```{r}
+tab <-microbiome::alpha(subset_phyloseq, index = "all")
+meta <- data.frame(sample_data(filtered_meta)) #Accessing my sample information from the ps object containing rarefied data
+tab$Exposure_time = meta$Exposure_time
+
+###Chao1
+p.chao1 <- boxplot_alpha(subset_phyloseq, 
+                           index = "Chao1",
+                           x_var = "Exposure_time",
+                           fill.colors = c("Pre" = "blue", 
+                                           "Post" = "red"))
+
+
+p.chao1 <- p.chao1 + theme_pubr() + 
+  labs(x="", y="Chao1") +
+  theme(axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        legend.position = "none") # This line removes the legend
+
+p.chao1
+print(t.test(chao1~Exposure_time, data=tab)) # p-value = 2.633e-15
+
+
+#####Shannon
+
+p.shannon <- boxplot_alpha(subset_phyloseq, 
+                           index = "diversity_shannon",
+                           x_var = "Exposure_time",
+                           fill.colors = c("Pre" = "blue", 
+                                           "Post" = "red"))
+
+
+p.shannon <- p.shannon + theme_pubr() + 
+  labs(x="", y="Shannnon") +
+  theme(axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        legend.position = "none") # This line removes the legend
+
+p.shannon
+print(t.test(diversity_shannon~Exposure_time, data=tab)) # p-value = 1.184e-11
+
+
+#####Pielou
+
+p.Pielou <- boxplot_alpha(subset_phyloseq, 
+                           index = "evenness_pielou",
+                           x_var = "Exposure_time",
+                           fill.colors = c("Pre" = "blue", 
+                                           "Post" = "red"))
+
+
+p.Pielou <- p.Pielou + theme_pubr() + 
+  labs(x="", y="Pielou") +
+  theme(axis.text = element_text(size=12),
+        axis.title = element_text(size=16),
+        legend.position = "none") # This line removes the legend
+
+p.Pielou
+print(t.test(evenness_pielou~Exposure_time, data=tab)) # p-value = 0.3529
+
+#####Combine in one plot
+p_combined <- p.chao1 / p.shannon / p.Pielou
+p_combined
+# Optionally, if you want to add a common title or adjust spacing, you can do:
+p_combined + 
+  plot_annotation(title = "Diversity Indices Comparison for Microbiome samples") +
+  plot_layout(guides = 'collect') # This collects and positions the legends together if applicable
+```
+
+Yes there is a statistically significant difference between pre-exposure indv. and those not exposed at all to plastic.
+Likely due to the uptake of bacterioplankton from the surrounding water. 
+The clone controls microbiome changed over the course of exposure in the absence of MPs. There is no difference in the richness.
+
+Is there a difference between BP and DG post-exposure communities? CONTROLS - Non-plastic exposed samples
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Pond == "BP" & Category != "Daphnia: Post-Long-exposure (selected survivals)" & Plastic_presence == "No" | Pond == "DG" & Category != "Daphnia: Post-Long-exposure (selected survivals)" & Plastic_presence == "No")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Pond, data = filtered_meta, na.action = na.omit) #0.001 ***
+permanova_result
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Pond,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.834
+
+```
+```
+ANSWER: Yes, there is a difference between DG and BP communities in the absence of MPs exposure
+```
+
+Is there a difference between BP and DG post-exposure communities? WITH Plastics
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Pond == "BP" & Category != "Daphnia: Post-Long-exposure (selected survivals)" & Plastic_presence == "Yes" | Pond == "DG" & Category != "Daphnia: Post-Long-exposure (selected survivals)" & Plastic_presence == "Yes")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Pond, data = filtered_meta, na.action = na.omit) #0.001 ***
+permanova_result
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Pond,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.206
+
+```
+```
+ANSWER: Yes, there is a difference between DG and BP communities in the presence of MPs
+```
+
+BLAUWE POORT:
+
+		○ Only adults and not-long exposure jars
+		○ Post exposure only
+    ○ Before exposure vs After exposure
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Pond == "BP" & Age == "Adult" & Category != "Daphnia: Post-Long-exposure (selected survivals)"| Exposure_time == "Pre")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Plastic_presence, data = filtered_meta, na.action = na.omit) #0.016 *
+permanova_result
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Plastic_presence,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.065 .
+
+```
+
+BLAUWE POORT:
+
+		○ Only adults
+		○ Post-exposure only
+		○ Control(NO MPs in the jar) vs Plastics
+		○ If not significant then test for each plastic separetly
+
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Pond == "BP" & Age == "Adult" & Category != "Daphnia: Post-Long-exposure (selected survivals)"| Exposure_time == "Pre")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Plastic_presence, data = filtered_meta, na.action = na.omit) #0.016 *
+permanova_result
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Plastic_presence,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.065 .
+
+```
+
+
+DE GAVERS:
+
+		○ Only adults and not-long exposure jars
+		○ Post exposure only
+    ○ Plastic present vs Plastic absent
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Pond == "DG" & Age == "Adult" & Category != "Daphnia: Post-Long-exposure (selected survivals)"| Exposure_time == "Pre")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Plastic_presence, data = filtered_meta, na.action = na.omit) #0.002 **
+permanova_result
+#Dispersion
+dispersion_test <- betadisper(bray, filtered_meta$Plastic_presence,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.72 .
+
+```
+
+What are significant effects? All samples
+
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Exposure_time !="Pre" & Plastic != "C")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Pond*Clone*Plastic*Age, data = filtered_meta, na.action = na.omit)
+permanova_result_df = data.frame(permanova_result)
+```
+
+Check for equality of variances:
+
+```{r}
+"Pond"
+dispersion_test <- betadisper(bray, filtered_meta$Pond,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.247
+
+"Age"
+dispersion_test <- betadisper(bray, filtered_meta$Age,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.007 **
+```
+Plot PCoA showing diffrences between De-Gavers and Blauwe Poort
+
+```{r}
+#NMDS = Exposure + Pond
+subset_phyloseq <- subset_samples(ps_mic, Exposure_time != "Pre" & Category != "Daphnia: Post-Long-exposure (selected survivals)")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") 
+
+PCoA_result <- capscale(bray ~ 1)
+
+# Calculate total variance to normalize eigenvalues
+total_variance <- sum(PCoA_result$CA$eig)
+
+# Calculate percentage of variance explained by the first two axes
+percent_var1 <- PCoA_result$CA$eig[1] / total_variance * 100
+percent_var2 <- PCoA_result$CA$eig[2] / total_variance * 100
+
+meta = data.frame(sample_data(subset_phyloseq))
+
+p <- plot_ordination(subset_phyloseq, PCoA_result, color = "Pond", shape = "Plastic") +  
+  geom_point(size = 3) +  
+  scale_shape_manual(values = c(4, 16, 17, 15)) +  # Distinguishable shapes, 19 for NA
+  scale_colour_manual(values = c("red", "blue"), na.value = "grey50") +  
+  labs(title = "", 
+       x = paste0("PCoA1 (", format(percent_var1, digits = 2), "%)"), 
+       y = paste0("PCoA2 (", format(percent_var2, digits = 2), "%)"), 
+       color = "Bacterioplankton inoculum",
+       shape = "Control") +  # Change MP treatment to Control
+  theme_pubr()
+
+
+# Perform envfit to fit taxa onto the ordination
+taxa_scores <- scores(PCoA_result, display = "species")
+envfit_result <- envfit(PCoA_result ~ ., data = as.data.frame(t(taxa_scores)), permutations = 999)
+
+# Extract envfit vectors
+scores_envfit <- as.data.frame(scores(envfit_result, display = "vectors"))
+
+# Add envfit vectors
+p + geom_segment(data = scores_envfit, 
+                 aes(x = 0, y = 0, xend = PCoA1, yend = PCoA2), 
+                 arrow = arrow(length = unit(0.3, "cm")), color = "grey") +
+  geom_text(data = scores_envfit, 
+            aes(x = PCoA1, y = PCoA2, label = rownames(scores_envfit)), 
+            color = "black", vjust = 1.5)
+
+
+```
+
+```{r}
+#load seqPCoA.R and Silhouette.R from seqgroup
+subset_phyloseq_glom=tax_glom(subset_phyloseq,"Genus")
+abundance=data.frame(otu_table(subset_phyloseq))
+meta_data <- data.frame(sample_data(subset_phyloseq))
+groups=as.vector(meta_data$Plastic)
+taxa=data.frame(tax_table(subset_phyloseq))
+all(rownames(taxa) == rownames(abundance))
+
+# Filter the abundance matrix to match the filtered taxa
+filtered_abundance <- abundance[!(is.na(taxa$Genus) & is.na(taxa$Species)), ]
+
+# Merge Genus and Species and make them unique row names
+rownames(filtered_abundance) <- make.unique(paste(filtered_taxa$Genus, filtered_taxa$Species, sep = "_"))
+
+seqPCoA(filtered_abundance,groups=meta_data$Plastic,topTaxa=100,arrowFactor=0.002)
+
+```
+
+What are significant effects? Blauwe Poort
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Exposure_time !="Pre" & Plastic != "C" & Pond == "BP")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Clone*Plastic*Age, data = filtered_meta, na.action = na.omit)
+permanova_result_df = data.frame(permanova_result)
+```
+
+```{r}
+"Age"
+dispersion_test <- betadisper(bray, filtered_meta$Age,bias.adjust =TRUE)
+# Perform permutation test
+permutest(dispersion_test, permutations = 999)#0.059 **
+```
+What are significant effects? De Gavers
+```{r}
+subset_phyloseq <- subset_samples(ps_mic, Exposure_time !="Pre" & Plastic != "C" & Pond == "DG")
+filtered_meta <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(as.data.frame(t(otu_table(subset_phyloseq)), method="bray")) #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Clone*Plastic*Age, data = filtered_meta, na.action = na.omit)
+permanova_result_df = data.frame(permanova_result)
+```
+
+

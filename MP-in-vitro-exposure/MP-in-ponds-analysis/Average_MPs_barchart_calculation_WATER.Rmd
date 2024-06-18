@@ -1,0 +1,130 @@
+---
+title: "Plastics concetrations: Analysis-water"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(tidyr)
+```
+
+Water: Artifical vs Nature pond
+```{r}
+plas <- read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Field/Plastic_concentrations/Water.csv")
+```
+
+```{r}
+plas_filtered <- plas %>%
+  filter(Pond.Category != "WWTP" & Location != "Sint-Donatus Park")
+```
+
+Provide per Liter measurment (divide the abundances by 150)
+
+```{r}
+plas_filtered$plas_per_liter = plas_filtered$plastics/150
+```
+
+
+```{r}
+plas_filtered_averaged <- plas_filtered %>%
+  group_by(Pond.Category) %>%
+  summarise(
+    mean = mean(plas_per_liter, na.rm = TRUE),
+    sd = sd(plas_per_liter, na.rm = TRUE),
+    count = n(),
+    se = sd / sqrt(count) # Standard Error
+  )
+```
+
+Plotting the bar chart with error bars
+
+```{r}
+plas_filtered_averaged$Pond.Category[plas_filtered_averaged$Pond.Category == "Artificial pond"] <- "City pond"
+ggplot(plas_filtered_averaged, aes(x = Pond.Category, y = mean, fill=Pond.Category)) +
+  scale_fill_manual(values = c("City pond" = "#cb5658", "Natural pond" = "#6885d0")) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2, position = position_dodge(0.9)) +
+  labs(x = "", y = "Mean MPs number in a gram (MPs/L) of Water", title = "Pond water samples") +
+  theme_pubr() +
+  theme(legend.position = "none")
+```
+Check normality for each group
+```{r}
+plas_filtered$Pond.Category[plas_filtered$Pond.Category == "Artificial pond"] <- "City pond"
+
+shapiro.test(na.omit(plas_filtered$plas_per_liter[plas_filtered$Pond.Category == "City pond"])) #p-value = 0.03538
+shapiro.test(na.omit(plas_filtered$plas_per_liter[plas_filtered$Pond.Category == "Natural pond"])) #p-value = 1.35e-05
+```
+Log transform the data
+
+```{r}
+plas_filtered$plastics_log <- log(plas_filtered$plas_per_liter + 1)
+```
+
+Check normality for each group (logged)
+```{r}
+shapiro.test(na.omit(plas_filtered$plastics_log[plas_filtered$Pond.Category == "City pond"])) #p-value = 0.2245
+shapiro.test(na.omit(plas_filtered$plastics_log[plas_filtered$Pond.Category == "Natural pond"])) #p-value = 0.001313
+```
+```{r}
+wilcox.test(plas_per_liter~Pond.Category,data=plas_filtered) #0.002406
+```
+Per pond analysis
+
+
+```{r}
+plas_filtered_averaged <- plas_filtered %>%
+  group_by(Location) %>%
+  summarise(
+    mean = mean(plas_per_liter, na.rm = TRUE),
+    sd = sd(plas_per_liter, na.rm = TRUE),
+    count = n(),
+    se = sd / sqrt(count) # Standard Error
+  )
+
+print(plas_filtered_averaged)
+```
+
+
+```{r}
+plas_filtered_averaged$Category=c("Artificial pond","Artificial pond","Natural pond","Natural pond","Natural pond","Natural pond","Artificial pond","Natural pond","Natural pond","Natural pond","Natural pond")
+
+ggplot(plas_filtered_averaged, aes(x = Location, y = mean, fill = Category)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Artificial pond" = "#cb5658", "Natural pond" = "#6885d0")) +
+  labs(x = "Pond", y = "Mean MPs number in a Liter of pond water (MPs/L)", title = "") +
+  theme_pubr() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  coord_flip()+
+  theme(legend.position = "none")# Swap the axes to make bars lay horizontally
+```
+MICROPLASTICS COMPOSITIONS-WATER
+```{r}
+plas <- read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Field/Plastic_concentrations/Water.csv")
+plas_norm= plas %>%
+  select(PE_PP,PS,PET_polyester) %>%
+  mutate(./150) %>% #Change to MPs per LITER
+  melt()
+
+plas_norm$Category = plas$Pond.Category
+
+plas_norm <- plas_norm %>%
+  mutate(variable = recode(variable, 
+                           "PE_PP" = "PE/PP",
+                           "PET_polyester" = "PET/Polyester",
+                           "PS" = "PS"))
+
+
+ggplot(plas_norm, aes(x = variable, y = value, fill = Category)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Artificial pond" = "#cb5658", "Natural pond" = "#6885d0")) +
+  labs(x = "Polymer type", y = "Mean MPs number in a Liter of water", title = "") +
+  theme_pubr() +
+  theme(axis.text.x = element_text(vjust = 0.5, hjust=1),
+        legend.position = "none") # This removes the legend completely
+```
+
+
+

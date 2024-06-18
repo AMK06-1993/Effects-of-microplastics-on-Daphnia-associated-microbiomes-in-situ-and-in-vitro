@@ -1,0 +1,226 @@
+---
+title: "PlasticDaphnia: Nicola's exposure PCoA ordinations: Bacterioplankton"
+output: html_notebook
+---
+
+Load packages
+
+```{r}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(ggpubr)
+library(mltools)
+library(data.table)
+```
+
+Load ps-object and metadata
+```{r}
+#Load phyloseq (rarefied)
+ps_bac = readRDS("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/phyloseq/decontam/ps_rare_bacteroplankton_decontam.rds")
+
+#load meta
+meta = read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/decontaminated_set/merged_meta.csv",row.names = 1)
+```
+
+Load metadata into ps
+
+```{r}
+# Extract common sample IDs
+common_sample_ids <- intersect(sample_names(ps_bac), row.names(meta))
+# Subset metadata to include only common sample IDs
+filtered_meta <- meta[common_sample_ids, ]
+# Assign filtered metadata as sample_data for ps_bac
+sample_data(ps_bac) <- filtered_meta
+```
+
+Ordination (BP/DG separate):
+  Pre vs Post exposure (exclude controls - exposure samples with no MPs)
+  Colour by exposure
+  
+Blauwe Poort:
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "BP" & Plastic != "C")
+
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+nmds_result <- metaMDS(bray, trymax = 100,k=2)  # stress = 0.1324062
+
+plot_ordination(subset_phyloseq, nmds_result, color = "Exposure_time") +  
+  geom_point(size = 3) +  
+  labs(title = "NMDS with Bray-Curtis Distance for Blauwe-Poort bacterioplankton community", 
+       x = "NMDS1", 
+       y = "NMDS2", 
+       color = "Exposure",) +  
+  theme_pubr()
+
+```
+Permanova statistical tests for differences in the community composistions (based on bray-curtis dissimilarity)
+
+Q1: Is there a difference in bacterioplankton community after 30 days of exposure to MPs? 
+
+Community after experiment but without exposure to the MPs:
+Pre-BP ~ Post-BP after 30 days of exposure without MPs (Plastic == "C")
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "BP" & Plastic =="C" | Pond == "BP" & Plastic == "NaN")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Exposure_time, data = meta_data, method = "bray")
+print(permanova_result) #0.005 **
+
+dispersion_test <- betadisper(bray, meta_data$Exposure_time)
+permutest(dispersion_test,permutations = 999) #0.918
+```
+
+Community after experiment and after expoure to MPs:
+Pre-BP ~ Post-BP after 30 days of exposure WITH MPs (Plastic != "C") : PERMANOVA
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "BP" & Plastic !="C" | Pond == "BP" & Plastic == "NaN")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Exposure_time, data = meta_data, method = "bray")
+print(permanova_result) #0.001 ***
+dispersion_test <- betadisper(bray, meta_data$Exposure_time)
+permutest(dispersion_test,permutations = 999) #0.725
+```
+De Gavers:
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "DG" & Plastic != "C")
+
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+nmds_result <- metaMDS(bray, trymax = 100,k=2)  # stress = 0.1324062
+
+plot_ordination(subset_phyloseq, nmds_result, color = "Exposure_time") +  
+  geom_point(size = 3) +  
+  labs(title = "NMDS with Bray-Curtis Distance for De-Gavers bacterioplankton community", 
+       x = "NMDS1", 
+       y = "NMDS2", 
+       color = "Exposure",) +  
+  theme_pubr()
+
+```
+
+Permanova statistical tests for differences in the community composistions (based on bray-curtis dissimilarity)
+
+Q1: Is there a difference in bacterioplankton community after 30 days of exposure to MPs? 
+
+Community after experiment but without exposure to the MPs:
+Pre-BP ~ Post-BP after 30 days of exposure without MPs (Plastic == "C")
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "DG" & Plastic =="C" | Pond == "DG" & Plastic == "NaN")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Exposure_time, data = meta_data, method = "bray")
+print(permanova_result) #0.007 **
+dispersion_test <- betadisper(bray, meta_data$Exposure_time)
+permutest(dispersion_test,permutations = 999) #0.242
+
+```
+
+Community after experiment and after expoure to MPs:
+Pre-BP ~ Post-BP after 30 days of exposure WITH MPs (Plastic != "C") : PERMANOVA
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "DG" & Plastic !="C" | Pond == "DG" & Plastic == "NaN")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Exposure_time, data = meta_data, method = "bray")
+print(permanova_result) #0.001 ***
+dispersion_test <- betadisper(bray, meta_data$Exposure_time)
+permutest(dispersion_test,permutations = 999) #0.725
+```
+
+Q2: Are there differences in bacterioplankton communities before and after exposure between two samples ponds?
+Compare BP and DG bacterioplankton at the beginning of the experiment and after the exposure to MPs
+
+Initial ponds
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "DG" & Plastic == "NaN" | Pond == "BP" & Plastic == "NaN")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Pond, data = meta_data, method = "bray")
+print(permanova_result) #0.1
+```
+Post-exposure ponds
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Pond == "DG" & Plastic != "NaN" | Pond == "BP" & Plastic != "NaN")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") #creating dissimilarity matrix with vegdist using bray curtis
+
+permanova_result <- adonis2(bray~ Pond, data = meta_data, method = "bray")
+print(permanova_result) #0.001 ***
+dispersion_test <- betadisper(bray, meta_data$Pond)
+permutest(dispersion_test,permutations = 999) #0.921
+```
+Q3: If post-exposure community is different then which factor drives it the most?
+	
+Db-RDA (will need to 1-0 encode metavariables):
+	□ Plastic presence
+	□ Plastic (PLA, PET, Nylon)
+	□ Pond (DG, BT)
+	□ Daphnia presence (present,absent) 
+	□ Daphnia clone (KNO,F,BH)
+
+```{r}
+subset_phyloseq <- subset_samples(ps_bac, Clone != "H2O" & Clone != "NaN") #exclude pre-exposure and sterile samples
+meta_data <- data.frame(sample_data(subset_phyloseq))
+
+#remove redudant information
+columns_to_remove <- c("Sample.name", "Type","Category","Exposure_time","Age","Plastic_presence","Daphnia_present")
+meta_data <- meta_data[, !(names(meta_data) %in% columns_to_remove)]
+
+#Change to factors
+meta_data$Plastic <- as.factor(meta_data$Plastic)
+meta_data$Pond <- as.factor(meta_data$Pond)
+meta_data$Clone <- as.factor(meta_data$Clone)
+
+# One-hot encoding
+meta_one_hot <- data.frame(one_hot(as.data.table(meta_data)))
+rownames(meta_one_hot) <- rownames(meta_data)
+```
+
+
+db-RDA:
+
+```{r}
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method = "bray")
+
+# Full db-RDA model
+mod1 <- capscale(bray ~ ., data = meta_one_hot,sqrt.dist = TRUE) #full model
+mod0 <- capscale(bray ~ 1,sqrt.dist = TRUE) #reduced model
+
+attach(meta_one_hot)
+# Run forward stepwise dbRDA using the ordiR2step function
+step.res <- ordiR2step(
+  mod0, 
+  scope = formula(mod1), # specify the model formula
+  data = meta_one_hot, 
+  direction = "forward", # direction of stepwise selection
+  Pin = 1, # the number of variables to add in each step
+  R2scope = TRUE, # calculate R2 for each step
+  pstep = 100, # number of permutations at each step
+  perm.max = 999, # maximum number of permutations
+  permutations = 9999, # total number of permutations
+  trace = TRUE # turn off the output of intermediate results
+)
+RsquareAdj(mod1) #total adj.r.squared : 0.04753031
+step.res$anova
+```
+Effects:
+Presence of daphnia and a pond (p-value < 0.01), total adj-r2: 0.048
+
+End of code
+
+
+

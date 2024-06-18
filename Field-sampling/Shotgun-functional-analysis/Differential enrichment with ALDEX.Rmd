@@ -1,0 +1,87 @@
+---
+Differential enrichment
+---
+```{r}
+library(phyloseq)
+library(dplyr)
+library("ALDEx2")
+```
+
+FIELD
+
+import data
+```{r}
+ps=readRDS("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Field/Miseq/output/dada2/new/ps_raw")
+meta=read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Field/Miseq/metadata/metadata-basic.csv",row.names=1)
+sample_data(ps) = meta
+
+ps_dap=subset_samples(ps,Type=="Daphnia")
+
+abund_table=data.frame(otu_table(ps_dap))
+meta_table=data.frame(sample_data(ps_dap))
+taxa_table=data.frame(tax_table(ps_dap))
+all(rownames(meta_table) == rownames(abund_table))
+
+#sorted_meta_table <- meta_table[match(rownames(abund_table), rownames(meta_table)), ]
+```
+
+Aldex2
+```{r}
+#Define groups for ALDEX2
+groups <- as.factor(meta_table$MP)
+#CLR tranformation
+aldex = aldex(t(abund_table), groups, test="t", effect=TRUE, 
+  include.sample.summary=FALSE, denom="all", verbose=FALSE, paired.test=FALSE, gamma=NULL)
+
+ald.all <- data.frame(aldex)
+sig_by_both <- which(ald.all$we.ep < 0.05 & ald.all$wi.ep < 0.05) 
+sig_by_both_fdr <- which(ald.all$we.eBH < 0.05 & ald.all$wi.eBH < 0.05)
+ald.all.significant <- ald.all[as.array(sig_by_both_fdr),]
+taxa_table$combined <- paste(taxa_table$Family,taxa_table$Genus,taxa_table$Species, sep=" " )
+ald.all.significant["taxa_names"] <- taxa_table$combined[match(rownames(ald.all.significant), rownames(taxa_table))]
+
+write.csv(ald.all.significant,"/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Publication/tables/Field miseq/FIELD-HighVSLow-diff-abundance.csv")
+
+```
+
+EXPOSURE
+
+import data
+```{r}
+otus = read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/SILVA/otus_clean.csv",row.names=1)
+taxa = read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/SILVA/tax_clean.csv",row.names=1)
+meta = read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/meta-edited.csv", row.names=1)
+
+otu_table_obj <- otu_table(t(otus), taxa_are_rows = TRUE)
+tax_table_obj <- tax_table(as.matrix(taxa))
+sample_data_obj <- sample_data(meta)
+
+# Create the phyloseq object
+ps <- phyloseq(otu_table_obj, tax_table_obj, sample_data_obj)
+ps_genus <- tax_glom(ps,"Genus")
+ps_dap_BP=subset_samples(ps_genus, Category=="Daphnia: Post-exposure" & Plastic == "PET" & Pond == "DG" | Category=="Daphnia: Post-exposure" & Pond == "DG" & Plastic == "C")
+
+abund_table=data.frame(otu_table(ps_dap_BP))
+meta_table=data.frame(sample_data(ps_dap_BP))
+taxa_table=data.frame(tax_table(ps_dap_BP))
+
+```
+Aldex2-BP
+```{r}
+#Define groups for ALDEX2
+groups <- as.factor(meta_table$Plastic.1)
+#CLR tranformation
+aldex = aldex(abund_table, groups, test="t", effect=TRUE, 
+  include.sample.summary=FALSE, denom="all", verbose=FALSE, paired.test=FALSE, gamma=NULL)
+
+ald.all <- data.frame(aldex)
+sig_by_both <- which(ald.all$we.ep < 0.05 & ald.all$wi.ep < 0.05) 
+sig_by_both_fdr <- which(ald.all$we.eBH < 0.05 & ald.all$wi.eBH < 0.05)
+ald.all.significant <- ald.all[as.array(sig_by_both_fdr),]
+taxa_table$combined <- paste(taxa_table$Family,taxa_table$Genus,taxa_table$Species, sep=" " )
+ald.all.significant["taxa_names"] <- taxa_table$combined[match(rownames(ald.all.significant), rownames(taxa_table))]
+
+write.csv(ald.all.significant,"/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Publication/tables/Exposure_exp/PLA-HighVSLow-diff-abundance-BP.csv")
+
+```
+

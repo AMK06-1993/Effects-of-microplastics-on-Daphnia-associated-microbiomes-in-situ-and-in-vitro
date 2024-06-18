@@ -1,0 +1,160 @@
+---
+title: "Ordination and envfit"
+output: html_notebook
+---
+
+Load packages
+
+```{r}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(ggpubr)
+library(mltools)
+library(data.table)
+```
+
+"""
+Daphnia microbiome
+"""
+
+Load ps-object and metadata
+```{r}
+#Load phyloseq (rarefied)
+ps = readRDS("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/phyloseq/decontam/merged_phyloseq_rarified.rds")
+
+#load meta
+meta = read.csv("/Users/u0145079/Library/CloudStorage/OneDrive-KULeuven/Desktop/PlasticDaphnia/Exposure-Niki/tables/decontaminated_set/merged_meta.csv",row.names = 1)
+```
+
+Load metadata into ps
+
+```{r}
+# Extract common sample IDs
+common_sample_ids <- intersect(sample_names(ps), row.names(meta))
+# Subset metadata to include only common sample IDs
+filtered_meta <- meta[common_sample_ids, ]
+# Assign filtered metadata as sample_data for ps_bac
+sample_data(ps) <- filtered_meta
+```
+Daphnia-microbiome : Ordination + Envfit
+```{r}
+
+#NMDS = Exposure + Pond
+subset_phyloseq <- subset_samples(ps, Pond != "H2O" & Type == "Daphnia" & Exposure_time == "Pre" | Pond != "H2O" & Type == "Daphnia" & Exposure_time == "Post")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") 
+
+PCoA_result <- capscale(bray ~ 1)
+plot_ordination(subset_phyloseq, PCoA_result, color = "Exposure_time", shape = "Pond") +  
+  geom_point(size = 3) +  
+  scale_shape_manual(values = c(4, 16, 2)) +
+  labs(title = "NMDS with Bray-Curtis Distance for Daphnia magna microbiome", 
+       x = "NMDS1", 
+       y = "NMDS2", 
+       color = "Exposure_time",
+       shape = "Pond") +  
+  theme_pubr()
+```
+Envfit
+
+```{r}
+columns_to_remove <- c("Sample.name", "Type","Category")
+meta_data <- meta_data[, !(names(meta_data) %in% columns_to_remove)]
+
+envfit_result <- envfit(PCoA_result, meta_data, permutations = 999,scaling = "sites")
+print(envfit_result)
+
+# Extract p-values for each category
+pvals <- envfit_result$factors$pvals
+significant_centroids <- names(pvals[pvals < 0.05])
+
+# Filter centroids for significant categories
+sig_centroids <- data.frame(envfit_result$factors$centroids,envfit_result$factors$var.id)
+
+# Filter the sig_centroids to keep only rows where the category matches significant categories
+sig_centroids_plot <- sig_centroids[sig_centroids$envfit_result.factors.var.id %in% significant_centroids, c("MDS1", "MDS2")]
+sig_centroids_plot <- sig_centroids_plot[row.names(sig_centroids_plot) != "PondNaN", ]
+
+p <- plot_ordination(subset_phyloseq, PCoA_result, color = "Exposure_time", shape = "Pond") +  
+  geom_point(size = 3) +  
+  scale_shape_manual(values = c(4, 16, 2)) +
+  labs(title = "PCoA with Bray-Curtis Distance for Daphnia magna microbiome + Envfit", 
+       x = "PCoA1", 
+       y = "PCoA2", 
+       color = "Exposure_time",
+       shape = "Pond") +  
+  theme_pubr()
+
+# Add significant centroids as text labels
+p + geom_text(data = sig_centroids_plot, aes(x = MDS1*4, y = MDS2*4, label = rownames(sig_centroids_plot)), size = 4, color = "black", inherit.aes = FALSE)
+
+```
+```{r}
+print(envfit_result)
+```
+
+"""
+Bacterioplankton
+"""
+```{r}
+#NMDS = Exposure + Pond
+subset_phyloseq <- subset_samples(ps, Pond != "H2O" & Type == "Bacterioplankton" & Exposure_time == "Pre" | Pond != "H2O" & Type == "Bacterioplankton" & Exposure_time == "Post")
+meta_data <- data.frame(sample_data(subset_phyloseq))
+bray <- vegdist(data.frame(t(otu_table(subset_phyloseq))), method="bray") 
+
+PCoA_result <- capscale(bray ~ 1)
+plot_ordination(subset_phyloseq, PCoA_result, color = "Exposure_time", shape = "Pond") +  
+  geom_point(size = 3) +  
+  scale_shape_manual(values = c(4, 16, 2)) +
+  labs(title = "PCoA with Bray-Curtis Distance for Bacterioplankton", 
+       x = "NMDS1", 
+       y = "NMDS2", 
+       color = "Exposure_time",
+       shape = "Pond") +  
+  theme_pubr()
+```
+Envfit
+
+```{r}
+columns_to_remove <- c("Sample.name", "Type","Category","Age")
+meta_data <- meta_data[, !(names(meta_data) %in% columns_to_remove)]
+
+envfit_result <- envfit(PCoA_result, meta_data, permutations = 999,scaling = "sites")
+print(envfit_result)
+
+# Extract p-values for each category
+pvals <- envfit_result$factors$pvals
+significant_centroids <- names(pvals[pvals < 0.05])
+
+# Filter centroids for significant categories
+sig_centroids <- data.frame(envfit_result$factors$centroids,envfit_result$factors$var.id)
+
+# Filter the sig_centroids to keep only rows where the category matches significant categories
+sig_centroids_plot <- sig_centroids[sig_centroids$envfit_result.factors.var.id %in% significant_centroids, c("MDS1", "MDS2")]
+sig_centroids_plot <- sig_centroids_plot[row.names(sig_centroids_plot) != "PondNaN", ]
+sig_centroids_plot <- sig_centroids_plot[row.names(sig_centroids_plot) != "Exposure_timePre", ]
+sig_centroids_plot <- sig_centroids_plot[row.names(sig_centroids_plot) != "Exposure_timePost", ]
+sig_centroids_plot <- sig_centroids_plot[row.names(sig_centroids_plot) != "CloneNaN", ]
+sig_centroids_plot <- sig_centroids_plot[row.names(sig_centroids_plot) != "PlasticNaN", ]
+p <- plot_ordination(subset_phyloseq, PCoA_result, color = "Exposure_time", shape = "Pond") +  
+  geom_point(size = 3) +  
+  scale_shape_manual(values = c(4, 16, 2)) +
+  labs(title = "PCoA with Bray-Curtis Distance for Bacterioplankton + Envfit", 
+       x = "PCoA1", 
+       y = "PCoA2", 
+       color = "Exposure_time",
+       shape = "Pond") +  
+  theme_pubr()
+
+# Add significant centroids as text labels
+p + geom_text(data = sig_centroids_plot, aes(x = MDS1*8, y = MDS2*8, label = rownames(sig_centroids_plot)), size = 4, color = "black", inherit.aes = FALSE)
+
+```
+
+```{r}
+print(envfit_result)
+```
+End of code
+
+
